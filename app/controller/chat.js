@@ -36,7 +36,7 @@ class ChatController extends Controller {
   sendMessage() {
     const { ctx } = this;
     const { id, sessionId, originId, content, hash } = ctx.request.body;
-    global.CHAT_POOL.get(hash).get(sessionId)('message', JSON.stringify({
+    global.CHAT_POOL.get(hash).get(sessionId).socket('message', JSON.stringify({
       id, sessionId: originId, originId, content, hash, time: new Date().getTime(),
     }));
     this.ctx.status = 200;

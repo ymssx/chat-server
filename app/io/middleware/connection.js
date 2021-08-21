@@ -7,14 +7,14 @@ const getNoticeList = hashList => {
   const noticeData = {};
   hashList.forEach(hash => {
     const userList = Array.from(global.HASH_POOL.get(hash) || []);
-    userList.forEach(user => {
-      if (!noticeData[user]) {
-        noticeData[user] = {
-          socket: global.CHAT_POOL.get(hash).get(user),
+    userList.forEach(id => {
+      if (!noticeData[id]) {
+        noticeData[id] = {
+          ...global.CHAT_POOL.get(hash).get(id),
           hashList: [],
         };
       }
-      noticeData[user].hashList.push(hash);
+      noticeData[id].hashList.push(hash);
     });
   });
   return Object.values(noticeData);
@@ -22,7 +22,7 @@ const getNoticeList = hashList => {
 
 module.exports = () => {
   return async (ctx, next) => {
-    const { userId, hashList: jsonHashList = '[]' } = ctx.socket.handshake.query;
+    const { userName, userId, hashList: jsonHashList = '[]' } = ctx.socket.handshake.query;
     const hashList = JSON.parse(jsonHashList) || [];
 
     hashList.forEach(hash => {
@@ -33,8 +33,11 @@ module.exports = () => {
         global.CHAT_POOL.set(hash, new Map());
       }
       global.HASH_POOL.get(hash).add(userId);
-      global.CHAT_POOL.get(hash).set(userId, (key, data) => {
-        ctx.socket.emit(key, data);
+      global.CHAT_POOL.get(hash).set(userId, {
+        socket: (key, data) => {
+          ctx.socket.emit(key, data);
+        },
+        name: userName,
       });
     });
     ctx.socket.emit('connected', userId);
@@ -42,13 +45,19 @@ module.exports = () => {
     // 通知其它用户
     getNoticeList(hashList).forEach(({ socket, hashList }) => {
       socket('user-connect', JSON.stringify({
-        userId,
+        name: userName,
+        id: userId,
         hashList,
       }));
     });
 
     const channelMap = hashList.reduce((map, hash) => {
-      const userList = Array.from(global.HASH_POOL.get(hash) || []);
+      const userList = Array
+        .from(global.HASH_POOL.get(hash) || [])
+        .map(id => {
+          const { name } = global.CHAT_POOL.get(hash).get(id);
+          return { id, name };
+        });
       map[hash] = userList;
       return map;
     }, {});
@@ -63,8 +72,9 @@ module.exports = () => {
       global.CHAT_POOL.get(hash).delete(userId);
     });
 
-    getNoticeList(hashList).forEach(({ socket, hashList }) => {
+    getNoticeList(hashList).forEach(({ socket, hashList, name }) => {
       socket('user-disconnect', JSON.stringify({
+        name,
         userId,
         hashList,
       }));
